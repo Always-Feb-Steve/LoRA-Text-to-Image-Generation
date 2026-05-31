@@ -32,19 +32,18 @@ def generate_and_show_images(pipeline, prompt, negative_prompt=None, num_images=
 
 def run_sd1_5(prompt, model_name="runwayml/stable-diffusion-v1-5", device="cpu"):
     print(f"Loading SD1.5 model: {model_name}")
-    # 加载管道
     pipe = StableDiffusionPipeline.from_pretrained(
         model_name,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        safety_checker=None,  # 可选：禁用安全检查器以加快速度
+        safety_checker=None,  
     ).to(device)
    
-    # 启用内存优化（可选）
+
     pipe.enable_attention_slicing()
     if hasattr(pipe, "enable_vae_slicing"):
         pipe.enable_vae_slicing()
    
-    # 生成图像
+   
     print(f"Generating image with prompt: {prompt}")
     images = generate_and_show_images(
         pipe,
@@ -64,7 +63,7 @@ def run_sdxl(prompt, model_name="stabilityai/stable-diffusion-xl-base-1.0", devi
     """
     print(f"Loading SDXL model: {model_name}")
    
-    # SDXL 需要两个模型：base 和 refiner
+    
     pipe = StableDiffusionXLPipeline.from_pretrained(
         model_name,
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
@@ -72,7 +71,7 @@ def run_sdxl(prompt, model_name="stabilityai/stable-diffusion-xl-base-1.0", devi
         use_safetensors=True,
     ).to(device)
    
-    # 加载refiner模型（可选但推荐）
+   
     refiner = None
     try:
         from diffusers import StableDiffusionXLImg2ImgPipeline
@@ -85,15 +84,15 @@ def run_sdxl(prompt, model_name="stabilityai/stable-diffusion-xl-base-1.0", devi
     except Exception as e:
         print(f"Could not load refiner: {e}")
    
-    # 优化
+   
     pipe.enable_attention_slicing()
     if hasattr(pipe, "enable_vae_slicing"):
         pipe.enable_vae_slicing()
    
-    # 生成图像
+   
     print(f"Generating image with SDXL for prompt: {prompt}")
    
-    # 第一步：使用base模型生成
+    
     images = pipe(
         prompt=prompt,
         negative_prompt="low quality, blurry, deformed",
@@ -104,7 +103,7 @@ def run_sdxl(prompt, model_name="stabilityai/stable-diffusion-xl-base-1.0", devi
         generator=torch.Generator(device=device).manual_seed(42)
     ).images
    
-    # 第二步：使用refiner精炼
+ 
     if refiner:
         images = refiner(
             prompt=prompt,
@@ -115,7 +114,7 @@ def run_sdxl(prompt, model_name="stabilityai/stable-diffusion-xl-base-1.0", devi
             generator=torch.Generator(device=device).manual_seed(42)
         ).images
     
-    # 保存图像
+    
     folder_name="generated_images"
     os.makedirs(folder_name, exist_ok=True)
 
@@ -131,30 +130,28 @@ def run_sdxl(prompt, model_name="stabilityai/stable-diffusion-xl-base-1.0", devi
 
 # # model_path = r'./sd1.5'
 # # model_path = "runwayml/stable-diffusion-v1-5"
-# # 使用示例
+# # Example
 # sd1_5_images = run_sd1_5(
 #     prompt="LeBron James in LA Laker jersey dunks , realistic art, detailed, 4k",
-#     model_name="runwayml/stable-diffusion-v1-5",  # 其他可选模型:
+#     model_name="runwayml/stable-diffusion-v1-5",  
 #     # "CompVis/stable-diffusion-v1-4"
 #     # "dreamlike-art/dreamlike-diffusion-1.0"
 #     # "prompthero/openjourney"
 # )
 
 
-# 使用示例
+# Example
 sdxl_images = run_sdxl(
     prompt="LeBron James in Golden State Warrior's jersey dunks , realistic art, detailed, 4k",
     model_name="stabilityai/stable-diffusion-xl-base-1.0"
 )
+    
 
 def run_sd3(prompt, model_name="stabilityai/stable-diffusion-3-medium-diffusers", device="cpu"):
-    """
-    使用 Stable Diffusion 3 生成图像
-    注意：SD3需要特定版本的diffusers和transformers
-    """
+    
     print(f"Loading SD3 model: {model_name}")
    
-    # SD3需要特定的导入方式
+    
     from diffusers import StableDiffusion3Pipeline
    
     pipe = StableDiffusion3Pipeline.from_pretrained(
@@ -162,26 +159,26 @@ def run_sd3(prompt, model_name="stabilityai/stable-diffusion-3-medium-diffusers"
         torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
     ).to(device)
    
-    # 优化设置
+ 
     pipe.enable_attention_slicing()
    
-    # SD3特定的参数
+    
     images = pipe(
         prompt=prompt,
         negative_prompt="low quality, blurry",
         num_inference_steps=28,
         guidance_scale=7.0,
-        width=1024,  # SD3支持更高分辨率
+        width=1024,  
         height=1024,
         generator=torch.Generator(device=device).manual_seed(42)
     ).images
    
-    # 显示和保存
+    
     for idx, img in enumerate(images):
         img.save(f"sd3_output_{idx+1}.png")
     return images
        
-# # 使用示例（注意：SD3模型较大，需要足够显存）
+# # Example
 # model_path = r'./models/stabilityai_stable-diffusion-3-medium-diffusers/stabilityai/stable-diffusion-3-medium-diffusers'
 # # model_path = "stabilityai/stable-diffusion-3-medium-diffusers"
 # sd3_images = run_sd3(
