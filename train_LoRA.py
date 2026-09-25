@@ -6,6 +6,7 @@
 # for training LoRA
 
 import os
+import argparse
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -18,6 +19,16 @@ from diffusers import StableDiffusionPipeline, UNet2DConditionModel, DDPMSchedul
 from transformers import CLIPTextModel, CLIPTokenizer
 from peft import LoraConfig, get_peft_model 
 import numpy as np
+
+
+def get_device():
+    """优先使用 CUDA，其次 Apple Silicon 的 MPS，最后 CPU"""
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
 
 class LoraDataset(Dataset):
     """LoRA训练数据集"""
@@ -89,7 +100,7 @@ class SimpleLoraTrainer:
     
     def __init__(self, config):
         self.config = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = get_device()
         
         # 创建输出目录
         self.output_dir = Path(config["output_dir"])
@@ -142,7 +153,7 @@ class SimpleLoraTrainer:
         # 3. 配置LoRA
         lora_config = LoraConfig(
             r=self.config.get("lora_rank", 4),  # LoRA秩
-            lora_alpha=self.config.get("lora_alpha", 32),
+            lora_alpha=self.config.get("lora_alpha", 4),
             target_modules=["to_k", "to_q", "to_v", "to_out.0", 
                             "proj_in", "proj_out", "ff.net.0.proj", "ff.net.2"], #文生图就训这几个parameters
             lora_dropout=self.config.get("lora_dropout", 0.0),
@@ -178,12 +189,13 @@ class SimpleLoraTrainer:
             image_size=self.config.get("image_size", 512)
         )
         
+        use_cuda = self.device.type == "cuda"
         dataloader = DataLoader(
             dataset,
             batch_size=self.config["batch_size"],
             shuffle=True,
-            num_workers=2,  # Windows设置为0，Linux/Mac可以设置2
-            pin_memory=True
+            num_workers=2 if use_cuda else 0,  # MPS/CPU 上多进程加载反而更慢
+            pin_memory=use_cuda
         )
         
         return dataloader
@@ -345,7 +357,7 @@ class SimpleLoraTrainer:
             "base_model": self.config["model_name"],
             "lora_config": {
                 "r": self.config.get("lora_rank", 4),
-                "alpha": self.config.get("lora_alpha", 32),
+                "alpha": self.config.get("lora_alpha", 4),
                 "dropout": self.config.get("lora_dropout", 0.0)
             },
             "training_config": self.config
@@ -360,10 +372,9 @@ class SimpleLoraTrainer:
 def create_default_config():
     """创建默认配置"""
     return {
-        "model_name": "runwayml/stable-diffusion-v1-5",
-        # "model_name": r"C:\apple\互联网搜索引擎\test\venv\Scripts\sd1.5",
-        "captions_file": r"lora_train\animal\metadata_train.json", #输入的prompt：tag和图片路径
-        "output_dir": r"./models/lora_trained_animal", #输出一个lora的模型
+        "model_name": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+        "captions_file": "lora_train/captions.json", #输入的prompt：tag和图片路径
+        "output_dir": "./models/lora_trained", #输出一个lora的模型
         
         # 训练参数
         "learning_rate": 5e-6,
@@ -388,19 +399,33 @@ def create_default_config():
 
 
 
+def parse_args():
+    """命令行参数，覆盖默认配置中的对应项"""
+    config = create_default_config()
+    parser = argparse.ArgumentParser(description="Train a LoRA adapter on Stable Diffusion 1.5")
+    for key in ["model_name", "captions_file", "output_dir"]:
+        parser.add_argument(f"--{key}", default=config[key])
+    for key in ["batch_size", "gradient_accumulation_steps", "num_epochs", "image_size",
+                "lora_rank", "lora_alpha", "save_steps", "seed"]:
+        parser.add_argument(f"--{key}", type=int, default=config[key])
+    parser.add_argument("--learning_rate", type=float, default=config["learning_rate"])
+    config.update(vars(parser.parse_args()))
+    return config
+
+
 def main():
     """主函数"""
     print("="*60)
     print("简化版LoRA训练器")
     print("="*60)
-    
+
     # 加载配置
-    config = create_default_config()
-    
+    config = parse_args()
+
     # 检查数据是否存在
     if not Path(config["captions_file"]).exists():
         print(f"❌ 标签文件不存在: {config['captions_file']}")
-        print("请先运行 prepare_data.py 准备数据")
+        print("请先运行 data/convert_data.py 或 data/convert_data_from_jsonl.py 准备数据")
         return
     
     # 创建训练器
@@ -413,7 +438,8 @@ def main():
     print("\n" + "="*60)
     print("使用训练好的LoRA:")
     print("="*60)
-    
+    print(f"python eval_LoRA.py --lora_path {config['output_dir']} --prompt \"<your prompt>\"")
+
 
 if __name__ == "__main__":
     main()

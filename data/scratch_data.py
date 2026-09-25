@@ -1,4 +1,6 @@
 
+import argparse
+import json
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -27,7 +29,7 @@ def download_bing_images(search_term, count=10, save_dir='bing_images'):
     encoded_term = quote(search_term)
     
     # build URL
-    base_url = "https://cn.bing.com/images/search" #where to search
+    base_url = "https://www.bing.com/images/search" #where to search (cn.bing.com returns no results outside mainland China)
     
     downloaded = 0
     page_size = 35  
@@ -86,7 +88,6 @@ def download_bing_images(search_term, count=10, save_dir='bing_images'):
                    
                     m_attr = element.get('m')
                     if m_attr:
-                        import json
                         img_info = json.loads(m_attr)
                         img_url = img_info.get('murl')
                         
@@ -141,6 +142,10 @@ def download_image(img_url, index, search_term, save_dir):
 
 # Example
 if __name__ == "__main__":
-    
-    tag = "Kung_Fu_Panda"
-    download_bing_images(tag, count=20, save_dir=f'/Users/stevezhou/Desktop/LoRA/{tag}') 
+    parser = argparse.ArgumentParser(description="Download training images from Bing image search")
+    parser.add_argument("--tag", default="Kung_Fu_Panda", help="search term; also used as the folder name and caption")
+    parser.add_argument("--count", type=int, default=20)
+    parser.add_argument("--save_dir", default=None, help="defaults to lora_train/<tag>")
+    args = parser.parse_args()
+
+    download_bing_images(args.tag, count=args.count, save_dir=args.save_dir or f"lora_train/{args.tag}")

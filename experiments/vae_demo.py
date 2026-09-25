@@ -1,21 +1,30 @@
 # code to demonstrate that the VAE works well.
 
+import argparse
 import cv2 #tool for image reading and processing
 import torch
 import numpy as np
 from diffusers import AutoencoderKL
 
 
-model_path = "runwayml/stable-diffusion-v1-5"
+parser = argparse.ArgumentParser(description="Encode an image with the SD1.5 VAE and decode it back")
+parser.add_argument("inpath", help="input image")
+parser.add_argument("outpath", help="where to write the reconstruction")
+parser.add_argument("--model_path", default="stable-diffusion-v1-5/stable-diffusion-v1-5")
+args = parser.parse_args()
+
+model_path = args.model_path
 
 VAE = AutoencoderKL.from_pretrained(model_path, subfolder="vae")
 # VAE.to("cuda", dtype=torch.float16)
 
-inpath = r'/Users/stevezhou/Desktop/Econ.png'
-outpath = r'/Users/stevezhou/Desktop/Econ_VAE.png'
+inpath = args.inpath
+outpath = args.outpath
 
 # Use OpenCV to read and adjust image size
 raw_image = cv2.imread(inpath)
+if raw_image is None:
+    raise SystemExit(f"Could not read image: {inpath}")
 raw_image = cv2.cvtColor(raw_image, cv2.COLOR_BGR2RGB) # BGR to RGB
 # raw_image = cv2.resize(raw_image, (1024, 1024))
 
@@ -47,3 +56,4 @@ with torch.inference_mode():
 
   
     cv2.imwrite(outpath, cv2.cvtColor(rec_image, cv2.COLOR_RGB2BGR))
+    print(f"Reconstruction saved to {outpath}")

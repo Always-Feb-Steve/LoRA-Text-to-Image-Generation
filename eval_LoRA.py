@@ -1,46 +1,59 @@
 # for testing/evaluating LoRA
 
-import torch, os, json
+import argparse
+import os
 from pathlib import Path
+
+import torch
 from diffusers import StableDiffusionPipeline
-from safetensors.torch import load_file
-from peft import LoraConfig, get_peft_model, PeftModel
+from peft import PeftModel
 
 
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
-model_name = "runwayml/stable-diffusion-v1-5"
-epoch = 40
-lora_path = rf"C:\apple\互联网搜索引擎\test\venv\Scripts\Project2-text_to_image\models\lora_trained_animal\checkpoints\checkpoint_epoch_{epoch}"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+parser = argparse.ArgumentParser(description="Generate a test image from a trained LoRA checkpoint")
+parser.add_argument("--model_name", default="stable-diffusion-v1-5/stable-diffusion-v1-5")
+parser.add_argument("--lora_path", default="models/lora_trained",
+                    help="final model dir, or a checkpoint such as models/lora_trained/checkpoints/checkpoint_epoch_40")
+parser.add_argument("--prompt", default="Minimalist sculpture of a vibrant yellow parrot perched on a sleek black stand")
+parser.add_argument("--num_inference_steps", type=int, default=30)
+parser.add_argument("--seed", type=int, default=42)
+parser.add_argument("--output_dir", default="test_generations")
+args = parser.parse_args()
+
+device = get_device()
 
 
 test_pipe = StableDiffusionPipeline.from_pretrained(
-    model_name,
+    args.model_name,
     torch_dtype=torch.float16 if device.type == "cuda" else torch.float32,
     safety_checker=None
 ).to(device)
 
 
 unet = test_pipe.unet
-unet = PeftModel.from_pretrained(unet, lora_path)
+unet = PeftModel.from_pretrained(unet, args.lora_path)
 test_pipe.unet = unet
 
 
-test_prompt = "Minimalist sculpture of a vibrant yellow parrot perched on a sleek black stand"
-
-
-test_output_dir = "test_generations"
-os.makedirs(test_output_dir, exist_ok=True)
+os.makedirs(args.output_dir, exist_ok=True)
 
 
 image = test_pipe(
-    test_prompt,
-    num_inference_steps=30,
-    guidance_scale=7.5
+    args.prompt,
+    num_inference_steps=args.num_inference_steps,
+    guidance_scale=7.5,
+    generator=torch.Generator("cpu").manual_seed(args.seed)
 ).images[0]
 
 
-output_path = os.path.join(test_output_dir, f"generation_epoch_{epoch}.jpg")
+output_path = os.path.join(args.output_dir, f"generation_{Path(args.lora_path).name}.jpg")
 image.save(output_path)
 
 print(f"✅ Test Images are saved: {output_path}")
