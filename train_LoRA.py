@@ -33,7 +33,7 @@ def get_device():
 class LoraDataset(Dataset):
     """LoRA训练数据集"""
     
-    def __init__(self, captions_file, transform=None, image_size=512):
+    def __init__(self, captions_file, transform=None, image_size=512, random_flip=False):
         self.transform = transform
         self.image_size = image_size
         
@@ -47,7 +47,9 @@ class LoraDataset(Dataset):
         # 如果没有提供transform，创建默认的
         if self.transform is None:
             self.transform = transforms.Compose([
-                transforms.Resize((image_size, image_size)),
+                transforms.Resize(image_size),  # 短边缩放到 image_size，保持宽高比
+                transforms.CenterCrop(image_size),  # 再裁成正方形，避免把 16:9 的图压扁
+                *([transforms.RandomHorizontalFlip()] if random_flip else []),  # 小数据集时相当于数据翻倍
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5])
             ])
@@ -186,7 +188,8 @@ class SimpleLoraTrainer:
         
         dataset = LoraDataset( #加载图片
             captions_file=self.config["captions_file"],
-            image_size=self.config.get("image_size", 512)
+            image_size=self.config.get("image_size", 512),
+            random_flip=self.config.get("random_flip", False)
         )
         
         use_cuda = self.device.type == "cuda"
@@ -321,7 +324,8 @@ class SimpleLoraTrainer:
             avg_loss = epoch_loss / len(dataloader) 
             print(f"Epoch {epoch+1} 平均损失: {avg_loss:.4f}")
             
-            self.save_checkpoint(f"epoch_{epoch+1}")
+            if (epoch + 1) % self.config.get("save_epochs", 1) == 0:
+                self.save_checkpoint(f"epoch_{epoch+1}")
         
         # 训练完成
         self.save_final_model()
@@ -377,7 +381,7 @@ def create_default_config():
         "output_dir": "./models/lora_trained", #输出一个lora的模型
         
         # 训练参数
-        "learning_rate": 5e-6,
+        "learning_rate": 1e-4,  # 5e-6 is too low for LoRA to visibly change the output
         "batch_size": 2,  # 小批量，减少显存占用
         "gradient_accumulation_steps": 2,  # 累积梯度
         "num_epochs": 100,
@@ -390,6 +394,10 @@ def create_default_config():
         
         # 保存和验证
         "save_steps": 20,
+        "save_epochs": 1,  # 每 N 个 epoch 保存一次
+        
+        # 数据增强
+        "random_flip": False,
         
         # 其他
         "seed": 42 
@@ -406,9 +414,10 @@ def parse_args():
     for key in ["model_name", "captions_file", "output_dir"]:
         parser.add_argument(f"--{key}", default=config[key])
     for key in ["batch_size", "gradient_accumulation_steps", "num_epochs", "image_size",
-                "lora_rank", "lora_alpha", "save_steps", "seed"]:
+                "lora_rank", "lora_alpha", "save_steps", "save_epochs", "seed"]:
         parser.add_argument(f"--{key}", type=int, default=config[key])
     parser.add_argument("--learning_rate", type=float, default=config["learning_rate"])
+    parser.add_argument("--random_flip", action="store_true", help="randomly mirror training images")
     config.update(vars(parser.parse_args()))
     return config
 

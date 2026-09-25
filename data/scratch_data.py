@@ -32,6 +32,7 @@ def download_bing_images(search_term, count=10, save_dir='bing_images'):
     base_url = "https://www.bing.com/images/search" #where to search (cn.bing.com returns no results outside mainland China)
     
     downloaded = 0
+    seen_urls = set()  # later result pages often repeat earlier images
     page_size = 35  
     pages_needed = (count + page_size - 1) // page_size
     
@@ -91,7 +92,8 @@ def download_bing_images(search_term, count=10, save_dir='bing_images'):
                         img_info = json.loads(m_attr)
                         img_url = img_info.get('murl')
                         
-                        if img_url:
+                        if img_url and img_url not in seen_urls:
+                            seen_urls.add(img_url)
                             download_image(img_url, downloaded, search_term, save_dir)
                             downloaded += 1
                             time.sleep(0.5)  
